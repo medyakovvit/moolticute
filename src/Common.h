@@ -21,6 +21,8 @@
 
 #include <QtCore>
 #include <functional>
+#include <memory>
+#include <type_traits>
 
 #define MOOLTIPASS_VENDORID     0x16D0
 #define MOOLTIPASS_PRODUCTID    0x09A0
@@ -30,15 +32,37 @@
 #define MOOLTIPASS_FAV_MAX       14
 #define MP_NODE_SIZE            132
 
+#define MOOLTIPASS_BLOCK_SIZE   32
+
 #define MOOLTICUTE_DAEMON_PORT  30035
+
+//shared memory size
+#define SHMEM_SIZE      128 * 1024
 
 #define qToChar(s) s.toLocal8Bit().constData()
 #define qToUtf8(s) s.toUtf8().constData()
 
+#define MOOLTICUTE_DAEMON_LOG_SOCK    "moolticuted_local_log_sock"
+
+class QLocalServer;
+
+#if QT_VERSION < 0x050700
+//This declares a qAsConst implementation if we build with Qt < 5.7
+
+template< class T >
+using mc_remove_reference_t = typename std::remove_reference<T>::type;
+template<class T>
+mc_remove_reference_t<T> const& qAsConst(T&&t){return t;}
+template<class T>
+T const qAsConst(T&&t){return std::forward<T>(t);}
+template<class T>
+T const& qAsConst(T&t){return t;}
+#endif
+
 class Common
 {
 public:
-    static void installMessageOutputHandler();
+    static void installMessageOutputHandler(QLocalServer *logServer = nullptr);
 
     Q_ENUMS(MPStatus)
     typedef enum
@@ -63,9 +87,26 @@ public:
     static QByteArray dateToBytes(const QDate &dt);
 
     static QJsonArray bytesToJson(const QByteArray &data);
+
+    static bool isProcessRunning(qint64 pid);
+
+    static QJsonObject readSharedMemory(QSharedMemory &sh);
+    static bool writeSharedMemory(QSharedMemory &sh, const QJsonObject &o);
+
+    //create a unique identifier and save it into a list
+    static QString createUid(QString prefix = QString());
+    //release the unique id and remove it from the list
+    static void releaseUid(QString uid);
+
+    typedef enum
+    {
+        MP_Classic = 0,
+        MP_Mini = 1,
+    } MPHwVersion;
 };
 
 Q_DECLARE_METATYPE(Common::MPStatus)
+Q_DECLARE_METATYPE(Common::MPHwVersion)
 
 #endif // COMMON_H
 

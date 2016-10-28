@@ -19,9 +19,14 @@
 #include "AsyncJobs.h"
 #include "MPDevice.h"
 
+AsyncFuncDone MPCommandJob::defaultCheckRet = [](const QByteArray &data, bool &) -> bool
+{
+    return (quint8)data.at(2) == 0x01;
+};
+
 void MPCommandJob::start(const QByteArray &previous_data)
 {
-    if (!beforeFunc(previous_data))
+    if (!beforeFunc(previous_data, data))
     {
         emit error();
         return;
@@ -47,13 +52,23 @@ void MPCommandJob::start(const QByteArray &previous_data)
     });
 }
 
-AsyncJobs::AsyncJobs(QObject *parent):
-    QObject(parent)
+AsyncJobs::AsyncJobs(QString _log, QObject *parent):
+    QObject(parent),
+    jobsid(Common::createUid("job-")),
+    log(_log)
+{
+}
+
+AsyncJobs::AsyncJobs(QString _log, QString jid, QObject *parent):
+    QObject(parent),
+    jobsid(jid),
+    log(_log)
 {
 }
 
 AsyncJobs::~AsyncJobs()
 {
+    Common::releaseUid(jobsid);
 }
 
 void AsyncJobs::append(AsyncJob *j)
@@ -63,8 +78,24 @@ void AsyncJobs::append(AsyncJob *j)
     jobs.enqueue(j);
 }
 
+void AsyncJobs::prepend(AsyncJob *j)
+{
+    //reparent object to handle jobs memory from AsyncJobs
+    j->setParent(this);
+    jobs.prepend(j);
+}
+
+void AsyncJobs::insertAfter(AsyncJob *j, int pos)
+{
+    //reparent object to handle jobs memory from AsyncJobs
+    j->setParent(this);
+    jobs.insert(pos + 1, j);
+}
+
 void AsyncJobs::start()
 {
+    qInfo() << log;
+
     if (running) return;
     running = true;
 
@@ -98,4 +129,10 @@ void AsyncJobs::jobFailed()
 void AsyncJobs::jobDone(const QByteArray &data)
 {
     dequeueStartJob(data);
+}
+
+void AsyncJobs::setCurrentJobError(QString err)
+{
+    if (currentJob)
+        currentJob->setErrorStr(err);
 }

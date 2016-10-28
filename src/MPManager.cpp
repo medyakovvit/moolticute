@@ -30,6 +30,10 @@
 MPManager::MPManager():
     QObject(nullptr)
 {
+}
+
+bool MPManager::initialize()
+{
 #if defined(Q_OS_WIN)
     connect(UsbMonitor_win::Instance(), SIGNAL(usbDeviceAdded()), this, SLOT(usbDeviceAdded()));
     connect(UsbMonitor_win::Instance(), SIGNAL(usbDeviceRemoved()), this, SLOT(usbDeviceRemoved()));
@@ -50,6 +54,8 @@ MPManager::MPManager():
 #endif
     if (g_bEmulationMode)
         checkUsbDevices();
+
+    return true;
 }
 
 MPManager::~MPManager()
@@ -64,6 +70,16 @@ void MPManager::stop()
 #if defined(Q_OS_LINUX)
     UsbMonitor_linux::Instance()->stop();
 #endif
+
+    //Clear all devices
+    auto it = devices.begin();
+    while (it != devices.end())
+    {
+        emit mpDisconnected(it.value());
+        delete it.value();
+        devices.remove(it.key());
+        it = devices.begin();
+    }
 }
 
 void MPManager::usbDeviceAdded()

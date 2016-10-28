@@ -74,6 +74,8 @@
 #define MP_ADD_DATA_SERVICE      0xBF
 #define MP_WRITE_32B_IN_DN       0xC0
 #define MP_READ_32B_IN_DN        0xC1
+#define MP_CANCEL_USER_REQUEST   0xC3
+#define MP_PLEASE_RETRY          0xC4
 #define MP_READ_FLASH_NODE       0xC5
 #define MP_WRITE_FLASH_NODE      0xC6
 #define MP_GET_FAVORITE          0xC7
@@ -89,6 +91,7 @@
 #define MP_GET_DN_START_PARENT   0xD1
 #define MP_SET_DN_START_PARENT   0xD2
 #define MP_END_MEMORYMGMT        0xD3
+#define MP_SET_DESCRIPTION       0xD8
 
 
 //Parameters for MP_GET_MOOLTIPASS_PARM
@@ -102,6 +105,10 @@
 #define OFFLINE_MODE_PARAM          8
 #define TUTORIAL_BOOL_PARAM        16
 
+// MP Mini only
+#define MINI_OLED_CONTRAST_CURRENT_PARAM    26
+#define MINI_KNOCK_DETECT_ENABLE_PARAM      28
+#define MINI_KNOCK_THRES_PARAM              29
 
 #endif // MOOLTIPASSCMDS_H
 

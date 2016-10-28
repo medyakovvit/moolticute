@@ -22,10 +22,12 @@
 #include <QApplication>
 #include <QObject>
 #include <QSettings>
+#include <QLocalServer>
 
 #include "Common.h"
 #include "MPManager.h"
 #include "WSServer.h"
+#include "HttpServer.h"
 
 extern bool g_bEmulationMode;
 
@@ -36,8 +38,17 @@ public:
     AppDaemon(int &argc, char **argv);
     virtual ~AppDaemon();
 
+    bool initialize();
+
 private:
     WSServer *wsServer;
+    HttpServer *httpServer = nullptr;
+
+    //This is for communication between app/daemon
+    QSharedMemory sharedMem;
+
+    //this is to send out logs to gui app
+    QLocalServer *localLogServer = nullptr;
 };
 
 #endif // APPDAEMON_H

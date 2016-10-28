@@ -24,6 +24,8 @@
 #include "Common.h"
 #include "MPManager.h"
 
+class WSServer;
+
 class WSServerCon: public QObject
 {
     Q_OBJECT
@@ -55,14 +57,20 @@ private slots:
     void sendTutorialEnabled();
     void sendMemMgmtMode();
     void sendVersion();
+    void sendScreenBrightness();
+    void sendKnockEnabled();
+    void sendKnockSensitivity();
 
 private:
     QWebSocket *wsClient;
 
     MPDevice *mpdevice = nullptr;
 
+    QString clientUid;
+
     void processParametersSet(const QJsonObject &data);
-    void sendFailedJson(QJsonObject obj);
+    void sendFailedJson(QJsonObject obj, QString errstr = QString());
+    QString getRequestId(const QJsonValue &v);
 };
 
 #endif // WSSERVERCON_H

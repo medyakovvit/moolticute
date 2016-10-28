@@ -17,6 +17,21 @@
  **
  ******************************************************************************/
 #include "Common.h"
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <time.h>
+
+#ifndef Q_OS_WIN
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <errno.h>
+#else
+#include <qt_windows.h>
+#endif
 
 #ifdef Q_OS_WIN_DISABLE_FOR_NOW
 #define COLOR_LIGHTRED
@@ -85,75 +100,76 @@ Common::MPStatus Common::statusFromString(const QString &st)
     return Common::UnknownStatus;
 }
 
-static QFile debugLogFile;
+static QLocalServer *debugLogServer = nullptr;
+static QList<QLocalSocket *> debugLogClients;
 static void _messageOutput(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
     QString fname = context.file;
     fname = fname.section('\\', -1, -1);
 
+    QString s;
     switch (type) {
     default:
     case QtDebugMsg:
     {
-        QString s = QString(COLOR_CYAN "DEBUG" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
-        printf("%s", qPrintable(s));
-        if (debugLogFile.isOpen()) debugLogFile.write(s.toLocal8Bit());
+        s = QString(COLOR_CYAN "DEBUG" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
         break;
     }
     case QtInfoMsg:
     {
-        QString s = QString(COLOR_GREEN "INFO" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
-        printf("%s", qPrintable(s));
-        if (debugLogFile.isOpen()) debugLogFile.write(s.toLocal8Bit());
+        s = QString(COLOR_GREEN "INFO" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
         break;
     }
     case QtWarningMsg:
     {
-        QString s = QString(COLOR_YELLOW "WARNING" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
-        printf("%s", qPrintable(s));
-        if (debugLogFile.isOpen()) debugLogFile.write(s.toLocal8Bit());
+        s = QString(COLOR_YELLOW "WARNING" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
         break;
     }
     case QtCriticalMsg:
     {
-        QString s = QString(COLOR_ORANGE "CRITICAL" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
-        printf("%s", qPrintable(s));
-        if (debugLogFile.isOpen()) debugLogFile.write(s.toLocal8Bit());
+        s = QString(COLOR_ORANGE "CRITICAL" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
         break;
     }
     case QtFatalMsg:
     {
-        QString s = QString(COLOR_RED "FATAL" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
-        printf("%s", qPrintable(s));
-        if (debugLogFile.isOpen()) debugLogFile.write(s.toLocal8Bit());
+        s = QString(COLOR_RED "FATAL" COLOR_RESET ": %1:%2 - %3\n").arg(fname).arg(context.line).arg(msg);
         break;
     }
     }
 
-    if (debugLogFile.isOpen())
-        debugLogFile.flush();
-    fflush(stdout);
+    if (!s.isEmpty())
+    {
+        printf("%s", qPrintable(s));
+        fflush(stdout);
+
+        for (QLocalSocket *sock: debugLogClients)
+        {
+            sock->write(s.toUtf8());
+            sock->flush();
+        }
+    }
 }
 
-void Common::installMessageOutputHandler()
+void Common::installMessageOutputHandler(QLocalServer *logServer)
 {
-    if (!debugLogFile.isOpen())
+    debugLogServer = logServer;
+    if (debugLogServer)
     {
-        //simple logrotate
-        QString f = QCoreApplication::applicationDirPath() + "/app.log";
-        QFileInfo fi(f);
-        if (fi.size() > 10 * 1024 * 1024) //10Mb max
+        QObject::connect(debugLogServer, &QLocalServer::newConnection, []()
         {
-            QFile::remove(f + ".5"); //remove really old
-            QFile::rename(f + ".4", f + ".5");
-            QFile::rename(f + ".3", f + ".4");
-            QFile::rename(f + ".2", f + ".3");
-            QFile::rename(f, f + ".2");
-        }
+            QLocalSocket *s = debugLogServer->nextPendingConnection();
 
-        debugLogFile.setFileName(f);
-        //debugLogFile.open(QFile::ReadWrite | QFile::Append);
-        //debugLogFile.write(QString(DEBUG_START_LINE).arg(QDateTime::currentDateTime().toString()).toLocal8Bit());
+            //New clients gets added to the list
+            //and logs will be forwarded to them
+            if (debugLogServer->hasPendingConnections())
+                debugLogClients.append(s);
+
+            QObject::connect(s, &QLocalSocket::disconnected, [s]()
+            {
+                debugLogClients.removeAll(s);
+                s->deleteLater();
+            });
+        });
     }
     qInstallMessageHandler(_messageOutput);
 }
@@ -187,4 +203,113 @@ QJsonArray Common::bytesToJson(const QByteArray &data)
     for (int i = 0;i < data.size();i++)
         arr.append((quint8)data.at(i));
     return arr;
+}
+
+//Check if the process with <pid> is running
+bool Common::isProcessRunning(qint64 pid)
+{
+    if (pid == 0) return false;
+#if defined(Q_OS_WIN)
+    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (!process) return false;
+    DWORD ret = WaitForSingleObject(process, 0);
+    CloseHandle(process);
+    return (ret == WAIT_TIMEOUT);
+#else
+    /* This code is portable on linux and macos (not tested on *BSD) */
+
+    pid_t p = (pid_t)pid;
+
+    //Wait for defunct process to end
+    while(waitpid(-1, 0, WNOHANG) > 0)
+    { /* wait for defunct... */ }
+
+    if (kill(p, 0) == 0)
+        return true;
+
+    //For some process we do not have permission to send signal
+    //But this also means that the process exists
+    if (errno == EPERM)
+        return true;
+
+    return false;
+#endif
+}
+
+QJsonObject Common::readSharedMemory(QSharedMemory &sh)
+{
+    QJsonObject o;
+
+    if (!sh.lock())
+    {
+        qCritical() << "Unable to lock access to shared mem segment: " << sh.errorString();
+        return o;
+    }
+
+    QJsonParseError jerr;
+    QJsonDocument jdoc = QJsonDocument::fromJson((const char *)sh.constData(), &jerr);
+
+    if (jerr.error != QJsonParseError::NoError)
+    {
+        qCritical() << "Unable to parse shared mem JSON: " << jerr.errorString();
+        sh.detach();
+        sh.unlock();
+        return o;
+    }
+
+    o = jdoc.object();
+
+    sh.unlock();
+
+    return o;
+}
+
+bool Common::writeSharedMemory(QSharedMemory &sh, const QJsonObject &o)
+{
+    if (!sh.lock())
+    {
+        qCritical() << "Unable to lock access to shared mem segment: " << sh.errorString();
+        return false;
+    }
+
+    QJsonDocument jdoc(o);
+    QByteArray ba = jdoc.toJson(QJsonDocument::Compact);
+    memcpy(sh.data(), ba.constData(), ba.size());
+
+    sh.unlock();
+
+    return true;
+}
+
+static bool commonUidInit = false;
+static QHash<QString, bool> commonExistingUid;
+
+QString Common::createUid(QString prefix)
+{
+    if (!commonUidInit)
+    {
+        commonUidInit = true;
+        qsrand(time(NULL));
+    }
+
+    //try to generate a unique id based on
+    QString s;
+    do
+    {
+        s = QStringLiteral("%1%2%3%4%5%6")
+            .arg(prefix)
+            .arg(qrand())
+            .arg(qrand())
+            .arg(qrand())
+            .arg(qrand())
+            .arg(qrand());
+    } while (commonExistingUid.contains(s));
+
+    return s;
+}
+
+void Common::releaseUid(QString uid)
+{
+    //delete this id from the list so it could be used again
+    commonExistingUid.remove(uid);
 }

@@ -6,6 +6,10 @@ TARGET = MoolticuteApp
 
 CONFIG += c++11
 
+mac {
+    LIBS += -framework ApplicationServices -framework IOKit -framework CoreFoundation -framework Cocoa -framework Foundation
+}
+
 include(src/QtAwesome/QtAwesome/QtAwesome.pri)
 
 SOURCES += src/main_gui.cpp \
@@ -14,7 +18,13 @@ SOURCES += src/main_gui.cpp \
     src/WSClient.cpp \
     src/RotateSpinner.cpp \
     src/CredentialsModel.cpp \
-    src/DialogEdit.cpp
+    src/DialogEdit.cpp \
+    src/AppGui.cpp \
+    src/DaemonMenuAction.cpp \
+    src/AutoStartup.cpp \
+    src/WindowLog.cpp \
+    src/OutputLog.cpp \
+    src/AnsiEscapeCodeHandler.cpp
 
 HEADERS  += src/MainWindow.h \
     src/Common.h \
@@ -23,12 +33,24 @@ HEADERS  += src/MainWindow.h \
     src/RotateSpinner.h \
     src/CredentialsModel.h \
     src/DialogEdit.h \
-    src/version.h
+    src/version.h \
+    src/AppGui.h \
+    src/DaemonMenuAction.h \
+    src/AutoStartup.h \
+    src/WindowLog.h \
+    src/OutputLog.h \
+    src/AnsiEscapeCodeHandler.h
+
+mac {
+    HEADERS += src/MacUtils.h
+    OBJECTIVE_SOURCES += src/MacUtils.mm
+}
 
 INCLUDEPATH += src
 
 FORMS    += src/MainWindow.ui \
-    src/DialogEdit.ui
+    src/DialogEdit.ui \
+    src/WindowLog.ui
 
 RESOURCES += \
     img/images.qrc
@@ -38,7 +60,7 @@ win32 {
 }
 
 mac {
-    ICON = img/AppIcon_128.icns
+    ICON = img/AppIcon.icns
 } else {
-    ICON = img/AppIcon_128.png
+    ICON = img/AppIcon.svg
 }

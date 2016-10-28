@@ -42,7 +42,7 @@
  * of the data received from the device.
  */
 
-typedef std::function<bool(const QByteArray &data)> AsyncFunc;
+typedef std::function<bool(const QByteArray &prev_data, QByteArray &data_to_send)> AsyncFunc;
 typedef std::function<bool(const QByteArray &data, bool &done)> AsyncFuncDone;
 
 class AsyncJob: public QObject
@@ -53,12 +53,19 @@ public:
         QObject(parent)
     {}
 
+    void setErrorStr(QString err) { errorStr = err; }
+    QString getErrorStr() { return errorStr; }
+
 public slots:
     virtual void start(const QByteArray &data) = 0;
 
 signals:
     void done(const QByteArray &data);
     void error();
+
+protected:
+    //A potential error message to be set when a job failed
+    QString errorStr;
 };
 
 class MPDevice;
@@ -102,6 +109,9 @@ public:
         afterFunc(std::move(afterfn))
     {}
 
+    //This default func only checks if return value from device is ok or not
+    static AsyncFuncDone defaultCheckRet;
+
 public slots:
     virtual void start(const QByteArray &previous_data);
 
@@ -111,7 +121,7 @@ private:
     QByteArray data;
 
     //callback with data from previous Job
-    AsyncFunc beforeFunc = [](const QByteArray &) -> bool { return true; };
+    AsyncFunc beforeFunc = [](const QByteArray &, QByteArray &) -> bool { return true; };
 
     //calback with data from this job before it finishes
     AsyncFuncDone afterFunc = [](const QByteArray &, bool &) -> bool { return true; };
@@ -121,13 +131,20 @@ class AsyncJobs: public QObject
 {
     Q_OBJECT
 public:
-    AsyncJobs(QObject *parent = nullptr);
+    AsyncJobs(QString log = QString(), QObject *parent = nullptr);
+    AsyncJobs(QString log = QString(), QString jid = QString(), QObject *parent = nullptr);
     virtual ~AsyncJobs();
 
     void append(AsyncJob *j);
+    void prepend(AsyncJob *j);
+    void insertAfter(AsyncJob *j, int pos);
+
+    QString getJobsId() { return jobsid; }
 
     //user data attached to this job queue
     QVariant user_data;
+
+    void setCurrentJobError(QString err);
 
 public slots:
     void start();
@@ -145,6 +162,9 @@ private:
     QQueue<AsyncJob *> jobs;
     bool running = false;
     AsyncJob *currentJob = nullptr;
+
+    QString jobsid;
+    QString log;
 };
 
 #endif // ASYNCJOBS_H

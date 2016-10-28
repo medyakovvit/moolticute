@@ -23,6 +23,7 @@
 #include "WSClient.h"
 #include <QtAwesome.h>
 #include "CredentialsModel.h"
+#include "WindowLog.h"
 
 namespace Ui {
 class MainWindow;
@@ -33,8 +34,15 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = 0);
+    explicit MainWindow(WSClient *client, QWidget *parent = 0);
     ~MainWindow();
+
+    void daemonLogAppend(const QByteArray &logdata);
+
+    bool isHttpDebugChecked();
+
+signals:
+    void windowCloseRequested();
 
 private slots:
     void updatePage();
@@ -44,6 +52,8 @@ private slots:
 //    void mpAdded(MPDevice *device);
 //    void mpRemoved(MPDevice *);
 
+    void askPasswordDone(bool success, const QString &pass);
+
     void on_pushButtonSettingsReset_clicked();
     void on_pushButtonSettingsSave_clicked();
     void on_pushButtonMemMode_clicked();
@@ -51,10 +61,15 @@ private slots:
     void on_pushButtonShowPass_clicked();
     void on_pushButtonCredAdd_clicked();
     void on_pushButtonCredEdit_clicked();
+    void on_pushButtonQuickAddCred_clicked();
+    void on_pushButtonViewLogs_clicked();
+    void on_pushButtonAutoStart_clicked();
 
 private:
 
     virtual void closeEvent(QCloseEvent *event);
+
+    void checkAutoStart();
 
     Ui::MainWindow *ui;
     QtAwesome* awesome;
@@ -65,6 +80,11 @@ private:
     CredentialsFilterModel *credFilterModel;
 
     QStandardItem *passItem = nullptr;
+
+    bool editCredAsked = false;
+
+    WindowLog *dialogLog = nullptr;
+    QByteArray logBuffer;
 
     enum
     {
@@ -77,6 +97,7 @@ private:
         PAGE_CREDENTIALS = 6,
         PAGE_WAIT_CONFIRM = 7,
         PAGE_ABOUT = 8,
+        PAGE_MC_SETTINGS = 9,
     };
 };
 

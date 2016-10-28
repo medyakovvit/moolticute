@@ -60,11 +60,19 @@ void WSClient::onWsDisconnected()
 {
     qDebug() << "Websocket disconnect";
     force_connected(false);
+    closeWebsocket();
+
+    //Auto reconnect websocket connection on failure
+    QTimer::singleShot(500, [=]()
+    {
+        qDebug() << "Websocket open()";
+        openWebsocket();
+    });
 }
 
 void WSClient::onWsError()
 {
-    qDebug() << "Websocket error: " << wsocket->errorString();
+    qDebug() << "Websocket error: " << (wsocket?wsocket->errorString():"No websocket object");
     closeWebsocket();
 
     //Auto reconnect websocket connection on failure
@@ -126,6 +134,22 @@ void WSClient::onTextMessageReceived(const QString &message)
         else
             emit askPasswordDone(true, o["password"].toString());
     }
+    else if (rootobj["msg"] == "version_changed")
+    {
+        QJsonObject o = rootobj["data"].toObject();
+        if (o["hw_version"].toString().contains("mini"))
+            set_mpHwVersion(Common::MP_Mini);
+        else
+            set_mpHwVersion(Common::MP_Classic);
+    }
+    else if (rootobj["msg"] == "set_credential")
+    {
+        QJsonObject o = rootobj["data"].toObject();
+        if (o.contains("failed") && o["failed"].toBool())
+            emit addCredentialDone(false);
+        else
+            emit addCredentialDone(true);
+    }
 }
 
 void WSClient::udateParameters(const QJsonObject &data)
@@ -150,4 +174,10 @@ void WSClient::udateParameters(const QJsonObject &data)
         set_offlineMode(data["value"].toBool());
     else if (param == "tutorial_enabled")
         set_tutorialEnabled(data["value"].toBool());
+    else if (param == "screen_brightness")
+        set_screenBrightness(data["value"].toInt());
+    else if (param == "knock_enabled")
+        set_knockEnabled(data["value"].toBool());
+    else if (param == "knock_sensitivity")
+        set_knockSensitivity(data["value"].toInt());
 }

@@ -53,6 +53,11 @@ class MPDevice: public QObject
     QT_WRITABLE_PROPERTY(int, flashMbSize)
     QT_WRITABLE_PROPERTY(QString, hwVersion)
 
+    //MP Mini only
+    QT_WRITABLE_PROPERTY(int, screenBrightness) //51-20%, 89-35%, 128-50%, 166-65%, 204-80%, 255-100%
+    QT_WRITABLE_PROPERTY(bool, knockEnabled)
+    QT_WRITABLE_PROPERTY(int, knockSensitivity) // 0-low, 1-medium, 2-high
+
 public:
     MPDevice(QObject *parent);
     virtual ~MPDevice();
@@ -71,6 +76,11 @@ public:
     void updateOfflineMode(bool en);
     void updateTutorialEnabled(bool en);
 
+    //MP Mini only
+    void updateScreenBrightness(int bval); //51-20%, 89-35%, 128-50%, 166-65%, 204-80%, 255-100%
+    void updateKnockEnabled(bool en);
+    void updateKnockSensitivity(int s); // 0-low, 1-medium, 2-high
+
     //mem mgmt mode
     void startMemMgmtMode();
     void exitMemMgmtMode();
@@ -82,11 +92,27 @@ public:
     void setCurrentDate();
 
     //Ask a password for specified service/login to MP
-    void askPassword(const QString &service, const QString &login,
-                     std::function<void(bool success, const QString &login, const QString &pass)> cb);
+    void askPassword(const QString &service, const QString &login, const QString &fallback_service, const QString &reqid,
+                     std::function<void(bool success, QString errstr, const QString &_service, const QString &login, const QString &pass)> cb);
+
+    //Add or Set service/login/pass/desc in MP
+    void setCredential(const QString &service, const QString &login,
+                       const QString &pass, const QString &description,
+                       std::function<void(bool success, QString errstr)> cb);
 
     //get 32 random bytes from device
-    void getRandomNumber(std::function<void(bool success, const QByteArray &nums)> cb);
+    void getRandomNumber(std::function<void(bool success, QString errstr, const QByteArray &nums)> cb);
+
+    //Send a cancel request to device
+    void cancelUserRequest(const QString &reqid);
+
+    //Request for a raw data node from the device
+    void getDataNode(const QString &service, const QString &fallback_service, const QString &reqid,
+                     std::function<void(bool success, QString errstr, QString service, QByteArray rawData)> cb);
+
+    //Set data to a context on the device
+    void setDataNode(const QString &service, const QByteArray &nodeData, const QString &reqid,
+                     std::function<void(bool success, QString errstr)> cb);
 
     //After successfull mem mgmt mode, clients can query data
     QList<MPNode *> &getLoginNodes() { return loginNodes; }
@@ -103,7 +129,8 @@ signals:
 private slots:
     void newDataRead(const QByteArray &data);
     void commandFailed();
-    void sendDataDequeue();
+    void sendDataDequeue(); //execute commands from the command queue
+    void runAndDequeueJobs(); //execute AsyncJobs from the jobs queues
 
 private:
     /* Platform function for starting a read, should be implemented in platform class */
@@ -116,6 +143,11 @@ private:
     void loadLoginChildNode(AsyncJobs *jobs, MPNode *parent, const QByteArray &address);
     void loadDataNode(AsyncJobs *jobs, const QByteArray &address);
     void loadDataChildNode(AsyncJobs *jobs, MPNode *parent, const QByteArray &address);
+
+    void createJobAddContext(const QString &service, AsyncJobs *jobs, bool isDataNode = false);
+
+    bool getDataNodeCb(AsyncJobs *jobs, const QByteArray &data, bool &done);
+    bool setDataNodeCb(AsyncJobs *jobs, int current, const QByteArray &data, bool &done);
 
     //timer that asks status
     QTimer *statusTimer = nullptr;
@@ -130,6 +162,21 @@ private:
 
     QList<MPNode *> loginNodes; //list of all parent nodes for credentials
     QList<MPNode *> dataNodes; //list of all parent nodes for data nodes
+
+    bool isMini = false; //true if fw is mini
+    bool isFw12 = false; //true if fw is at least v1.2
+
+    //this queue is used to put jobs list in a wait
+    //queue. it prevents other clients to query something
+    //when an AsyncJobs is currently running.
+    //An AsyncJobs can also be removed if it was not started (using cancelUserRequest for example)
+    //All AsyncJobs does have an <id>
+    QQueue<AsyncJobs *> jobsQueue;
+    AsyncJobs *currentJobs = nullptr;
+    bool isJobsQueueBusy(); //helper to check if something is already running
+
+    //this is a cache for data upload
+    QByteArray currentDataNode;
 };
 
 #endif // MPDEVICE_H

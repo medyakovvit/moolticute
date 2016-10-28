@@ -1,7 +1,9 @@
 #include "WSServerCon.h"
+#include "WSServer.h"
 
 WSServerCon::WSServerCon(QWebSocket *conn):
-    wsClient(conn)
+    wsClient(conn),
+    clientUid(Common::createUid(QStringLiteral("ws-")))
 {
     connect(wsClient, &QWebSocket::textMessageReceived, this, &WSServerCon::processMessage);
 }
@@ -21,6 +23,8 @@ void WSServerCon::processMessage(const QString &message)
 {
     QJsonParseError err;
     QJsonDocument jdoc = QJsonDocument::fromJson(message.toUtf8(), &err);
+
+    qDebug().noquote() << "JSON API recv:" << message;
 
     if (err.error != QJsonParseError::NoError)
     {
@@ -44,33 +48,70 @@ void WSServerCon::processMessage(const QString &message)
         //send command to exit MMM
         mpdevice->exitMemMgmtMode();
     }
-    else if (root["msg"] == "ask_password")
+    else if (root["msg"] == "ask_password" ||
+             root["msg"] == "get_credential")
     {
         QJsonObject o = root["data"].toObject();
-        mpdevice->askPassword(o["service"].toString(), o["login"].toString(),
-                [=](bool success, const QString &login, const QString &pass)
+
+        QString reqid;
+        if (o.contains("request_id"))
+            reqid = QStringLiteral("%1-%2").arg(clientUid).arg(getRequestId(o["request_id"]));
+
+        mpdevice->askPassword(o["service"].toString(), o["login"].toString(), o["fallback_service"].toString(),
+                reqid,
+                [=](bool success, QString errstr, const QString &service, const QString &login, const QString &pass)
         {
+            if (!WSServer::Instance()->checkClientExists(this))
+                return;
+
             if (!success)
             {
-                sendFailedJson(root);
+                sendFailedJson(root, errstr);
                 return;
             }
 
-            QJsonObject ores = o;
+            QJsonObject ores;
             QJsonObject oroot = root;
+            ores["service"] = service;
             ores["login"] = login;
             ores["password"] = pass;
             oroot["data"] = ores;
             sendJsonMessage(oroot);
         });
     }
-    else if (root["msg"] == "get_random_numbers")
+    else if (root["msg"] == "set_credential")
     {
-        mpdevice->getRandomNumber([=](bool success, const QByteArray &rndNums)
+        QJsonObject o = root["data"].toObject();
+        mpdevice->setCredential(o["service"].toString(), o["login"].toString(),
+                o["password"].toString(), o["description"].toString(),
+                [=](bool success, QString errstr)
         {
+            if (!WSServer::Instance()->checkClientExists(this))
+                return;
+
             if (!success)
             {
-                sendFailedJson(root);
+                sendFailedJson(root, errstr);
+                return;
+            }
+
+            QJsonObject ores = o;
+            QJsonObject oroot = root;
+            ores["password"] = "******";
+            oroot["data"] = ores;
+            sendJsonMessage(oroot);
+        });
+    }
+    else if (root["msg"] == "get_random_numbers")
+    {
+        mpdevice->getRandomNumber([=](bool success, QString errstr, const QByteArray &rndNums)
+        {
+            if (!WSServer::Instance()->checkClientExists(this))
+                return;
+
+            if (!success)
+            {
+                sendFailedJson(root, errstr);
                 return;
             }
 
@@ -82,12 +123,87 @@ void WSServerCon::processMessage(const QString &message)
             sendJsonMessage(oroot);
         });
     }
+    else if (root["msg"] == "cancel_request")
+    {
+        QJsonObject o = root["data"].toObject();
+        QString reqid;
+        if (o.contains("request_id"))
+            reqid = QStringLiteral("%1-%2").arg(clientUid).arg(getRequestId(o["request_id"]));
+
+        mpdevice->cancelUserRequest(reqid);
+    }
+    else if (root["msg"] == "get_data_node")
+    {
+        QJsonObject o = root["data"].toObject();
+
+        QString reqid;
+        if (o.contains("request_id"))
+            reqid = QStringLiteral("%1-%2").arg(clientUid).arg(getRequestId(o["request_id"]));
+
+        mpdevice->getDataNode(o["service"].toString(), o["fallback_service"].toString(),
+                reqid,
+                [=](bool success, QString errstr, const QString &service, const QByteArray &dataNode)
+        {
+            if (!WSServer::Instance()->checkClientExists(this))
+                return;
+
+            if (!success)
+            {
+                sendFailedJson(root, errstr);
+                return;
+            }
+
+            QJsonObject ores;
+            QJsonObject oroot = root;
+            ores["service"] = service;
+            ores["node_data"] = QString(dataNode.toBase64());
+            oroot["data"] = ores;
+            sendJsonMessage(oroot);
+        });
+    }
+    else if (root["msg"] == "set_data_node")
+    {
+        QJsonObject o = root["data"].toObject();
+
+        QString reqid;
+        if (o.contains("request_id"))
+            reqid = QStringLiteral("%1-%2").arg(clientUid).arg(getRequestId(o["request_id"]));
+
+        QByteArray data = QByteArray::fromBase64(o["node_data"].toString().toLocal8Bit());
+        if (data.isEmpty())
+        {
+            sendFailedJson(root, "node_data is empty");
+            return;
+        }
+
+        mpdevice->setDataNode(o["service"].toString(), data,
+                reqid,
+                [=](bool success, QString errstr)
+        {
+            if (!WSServer::Instance()->checkClientExists(this))
+                return;
+
+            if (!success)
+            {
+                sendFailedJson(root, errstr);
+                return;
+            }
+
+            QJsonObject ores;
+            QJsonObject oroot = root;
+            ores["node_data"] = "********";
+            oroot["data"] = ores;
+            sendJsonMessage(oroot);
+        });
+    }
 }
 
-void WSServerCon::sendFailedJson(QJsonObject obj)
+void WSServerCon::sendFailedJson(QJsonObject obj, QString errstr)
 {
     QJsonObject odata;
     odata["failed"] = true;
+    if (!errstr.isEmpty())
+        odata["error_message"] = errstr;
     obj["data"] = odata;
     sendJsonMessage(obj);
 }
@@ -119,6 +235,9 @@ void WSServerCon::resetDevice(MPDevice *dev)
     connect(mpdevice, SIGNAL(memMgmtModeChanged(bool)), this, SLOT(sendMemMgmtMode()));
     connect(mpdevice, SIGNAL(flashMbSizeChanged(int)), this, SLOT(sendVersion()));
     connect(mpdevice, SIGNAL(hwVersionChanged(QString)), this, SLOT(sendVersion()));
+    connect(mpdevice, SIGNAL(screenBrightnessChanged(int)), this, SLOT(sendScreenBrightness()));
+    connect(mpdevice, SIGNAL(knockEnabledChanged(bool)), this, SLOT(sendKnockEnabled()));
+    connect(mpdevice, SIGNAL(knockSensitivityChanged(int)), this, SLOT(sendKnockSensitivity()));
 }
 
 void WSServerCon::statusChanged()
@@ -151,6 +270,9 @@ void WSServerCon::sendInitialStatus()
         sendTutorialEnabled();
         sendMemMgmtMode();
         sendVersion();
+        sendScreenBrightness();
+        sendKnockEnabled();
+        sendKnockSensitivity();
     }
 }
 
@@ -217,6 +339,27 @@ void WSServerCon::sendTutorialEnabled()
     sendJsonMessage({{ "msg", "param_changed" }, { "data", data }});
 }
 
+void WSServerCon::sendScreenBrightness()
+{
+    QJsonObject data = {{ "parameter", "screen_brightness" },
+                        { "value", mpdevice->get_screenBrightness() }};
+    sendJsonMessage({{ "msg", "param_changed" }, { "data", data }});
+}
+
+void WSServerCon::sendKnockEnabled()
+{
+    QJsonObject data = {{ "parameter", "knock_enabled" },
+                        { "value", mpdevice->get_knockEnabled() }};
+    sendJsonMessage({{ "msg", "param_changed" }, { "data", data }});
+}
+
+void WSServerCon::sendKnockSensitivity()
+{
+    QJsonObject data = {{ "parameter", "knock_sensitivity" },
+                        { "value", mpdevice->get_knockSensitivity() }};
+    sendJsonMessage({{ "msg", "param_changed" }, { "data", data }});
+}
+
 void WSServerCon::sendMemMgmtMode()
 {
     sendJsonMessage({{ "msg", "memorymgmt_changed" },
@@ -269,8 +412,21 @@ void WSServerCon::processParametersSet(const QJsonObject &data)
         mpdevice->updateOfflineMode(data["offline_mode"].toBool());
     if (data.contains("tutorial_enabled"))
         mpdevice->updateTutorialEnabled(data["tutorial_enabled"].toBool());
+    if (data.contains("screen_brightness"))
+        mpdevice->updateScreenBrightness(data["screen_brightness"].toInt());
+    if (data.contains("knock_enabled"))
+        mpdevice->updateKnockEnabled(data["knock_enabled"].toBool());
+    if (data.contains("knock_sensitivity"))
+        mpdevice->updateKnockSensitivity(data["knock_sensitivity"].toInt());
 
     //reload parameters from device after changed all params, this will trigger
     //websocket update of clients too
     mpdevice->loadParameters();
+}
+
+QString WSServerCon::getRequestId(const QJsonValue &v)
+{
+    if (v.isDouble())
+        return QString::number(v.toInt());
+    return v.toString();
 }
