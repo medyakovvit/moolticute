@@ -75,6 +75,8 @@ private slots:
     void integrityProgress(int total, int current, QString message);
     void integrityFinished(bool success);
 
+    void importCSVFinished(bool success);
+
     void loadingProgress(int total, int current, QString message);
 
     void dbExported(const QByteArray &d, bool success);
@@ -90,6 +92,8 @@ private slots:
     void on_pushButtonExportFile_clicked();
     void on_pushButtonImportFile_clicked();
     void on_pushButtonIntegrity_clicked();
+    void on_pushButtonChooseCSV_clicked();
+    void on_pushButtonImportCSV_clicked();
 
     //Settings page
     void on_pushButtonSettingsReset_clicked();

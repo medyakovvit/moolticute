@@ -127,6 +127,8 @@ MainWindow::MainWindow(WSClient *client, QWidget *parent) :
 
     ui->pushButtonExportFile->setStyleSheet(CSS_BLUE_BUTTON);
     ui->pushButtonImportFile->setStyleSheet(CSS_BLUE_BUTTON);
+    ui->pushButtonChooseCSV->setStyleSheet(CSS_BLUE_BUTTON);
+    ui->pushButtonImportCSV->setStyleSheet(CSS_BLUE_BUTTON);
     ui->pushButtonSettingsReset->setStyleSheet(CSS_BLUE_BUTTON);
     ui->pushButtonSettingsSave->setStyleSheet(CSS_BLUE_BUTTON);
 
@@ -465,6 +467,8 @@ MainWindow::MainWindow(WSClient *client, QWidget *parent) :
 
     ui->scrollArea->setStyleSheet("QScrollArea { background-color:transparent; }");
     ui->scrollAreaWidgetContents->setStyleSheet("#scrollAreaWidgetContents { background-color:transparent; }");
+
+    ui->progressBar_importCSV->setVisible(false);
 
     // hide widget with prompts by default
     ui->promptWidget->setVisible(false);
@@ -1125,6 +1129,18 @@ void MainWindow::on_pushButtonIntegrity_clicked()
     }
 }
 
+void MainWindow::on_pushButtonChooseCSV_clicked()
+{
+    QString csvFileName = QFileDialog::getOpenFileName(this, tr("Choose CSV file"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), tr("CSV file (*.csv)"));
+
+    ui->lineEdit_importCSVFilePath->setText(csvFileName);
+}
+
+void MainWindow::on_pushButtonImportCSV_clicked()
+{
+    ui->progressBar_importCSV->show();
+}
+
 void MainWindow::integrityProgress(int total, int current, QString message)
 {
     if (ui->stackedWidget->currentWidget() == ui->pageWaiting)
@@ -1153,6 +1169,16 @@ void MainWindow::integrityFinished(bool success)
         QMessageBox::information(this, "Moolticute", tr("Memory integrity check done successfully"));
     ui->stackedWidget->setCurrentWidget(ui->pageSync);
     ui->widgetHeader->setEnabled(true);
+}
+
+void MainWindow::importCSVFinished(bool success)
+{
+    ui->progressBar_importCSV->hide();
+
+    if (!success)
+        QMessageBox::warning(this, "Moolticute", tr("Failed to import CSV file"));
+    else
+        QMessageBox::information(this, "Moolticute", tr("CSV file imported successfully"));
 }
 
 void MainWindow::setUIDRequestInstructionsWithId(const QString & id)
