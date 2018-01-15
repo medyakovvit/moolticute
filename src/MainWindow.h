@@ -75,7 +75,7 @@ private slots:
     void integrityProgress(int total, int current, QString message);
     void integrityFinished(bool success);
 
-    void importCSVFinished(bool success);
+    void importCSVFinished(bool success, QString message, int rows);
 
     void loadingProgress(int total, int current, QString message);
 

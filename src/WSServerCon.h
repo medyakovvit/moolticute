@@ -86,6 +86,7 @@ private:
 
     void processParametersSet(const QJsonObject &data);
     void sendFailedJson(QJsonObject obj, QString errstr = QString(), int errCode = -999);
+    void sendFailedCSV(QJsonObject obj, QString errstr = QString());
     QString getRequestId(const QJsonValue &v);
 };
 

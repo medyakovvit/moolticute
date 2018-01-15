@@ -102,6 +102,7 @@ public:
 
     void exportDbFile(const QString &encryption);
     void importDbFile(const QByteArray &fileData, bool noDelete);
+    void importCSVFile(const QByteArray &fileData);
 
     void sendListFilesCacheRequest();
     void sendRefreshFilesCacheRequest();
@@ -124,6 +125,7 @@ signals:
     void dataNodeExists(const QString &service, bool exists);
     void dbExported(const QByteArray &fileData, bool success);
     void dbImported(bool success, QString message);
+    void csvImported(bool success, QString message, int rows = -1);
     void memMgmtModeFailed(int errCode, QString errMsg);
     void filesCacheChanged();
     void cardDbMetadataChanged(QString cardId, int credentialsDbChangeNumber, int dataDbChangeNumber);

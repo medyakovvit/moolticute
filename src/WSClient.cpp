@@ -289,6 +289,15 @@ void WSClient::onTextMessageReceived(const QString &message)
         else
             emit dbImported(success, "");
     }
+    else if (rootobj["msg"] == "import_csv")
+    {
+        QJsonObject o = rootobj["data"].toObject();
+        bool success = !o.contains("failed") || !o.value("failed").toBool();
+        if (!success)
+            emit csvImported(success, o["error_message"].toString(), o["rows"].toInt());
+        else
+            emit csvImported(success, "", o["rows"].toInt());
+    }
     else if (rootobj["msg"] == "failed_memorymgmt")
     {
         QJsonObject o = rootobj["data"].toObject();
@@ -474,6 +483,13 @@ void WSClient::importDbFile(const QByteArray &fileData, bool noDelete)
     QJsonObject d = {{ "file_data", QString(fileData.toBase64()) },
                      { "no_delete", noDelete }};
     sendJsonData({{ "msg", "import_database" },
+                  { "data", d }});
+}
+
+void WSClient::importCSVFile(const QByteArray &fileData)
+{
+    QJsonObject d = {{ "file_data", QString(fileData.toBase64()) }};
+    sendJsonData({{ "msg", "import_csv" },
                   { "data", d }});
 }
 

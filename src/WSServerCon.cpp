@@ -537,6 +537,36 @@ void WSServerCon::processMessage(const QString &message)
         },
         defaultProgressCb);
     }
+    else if (root["msg"] == "import_csv")
+    {
+        QJsonObject o = root["data"].toObject();
+
+        QByteArray data = QByteArray::fromBase64(o["file_data"].toString().toLocal8Bit());
+        if (data.isEmpty())
+        {
+            sendFailedCSV(root, "file_data is empty");
+            return;
+        }
+
+        mpdevice->importCSV(data, [=](bool success, QString errstr, int rows = 0)
+        {
+            if (!WSServer::Instance()->checkClientExists(this))
+                return;
+
+            if (!success)
+            {
+                sendFailedCSV(root, errstr);
+                return;
+            }
+
+            QJsonObject ores;
+            QJsonObject oroot = root;
+            ores["success"] = "true";
+            ores["rows"] = rows;
+            oroot["data"] = ores;
+            sendJsonMessage(oroot);
+        });
+    }
     else if (root["msg"] == "refresh_files_cache")
     {
         mpdevice->updateFilesCache();
@@ -555,6 +585,16 @@ void WSServerCon::sendFailedJson(QJsonObject obj, QString errstr, int errCode)
         odata["error_message"] = errstr;
     if (errCode != -999)
         odata["error_code"] = errCode;
+    obj["data"] = odata;
+    sendJsonMessage(obj);
+}
+
+void WSServerCon::sendFailedCSV(QJsonObject obj, QString errstr)
+{
+    QJsonObject odata;
+    odata["failed"] = true;
+    if (!errstr.isEmpty())
+        odata["error_message"] = errstr;
     obj["data"] = odata;
     sendJsonMessage(obj);
 }

@@ -6699,6 +6699,50 @@ void MPDevice::importDatabase(const QByteArray &fileData, bool noDelete,
     }
 }
 
+void MPDevice::importCSV(const QByteArray &fileData, std::function<void(bool success, QString errstr, int rows)> cb)
+{
+    QVector<QByteArray> rows;
+
+    // parse csv file (simplified for now)
+    // Split byte array in rows(lines) and parse rows one by one
+    QByteArray buffer;
+    for (int i = 0; i < fileData.size(); ++i)
+    {
+
+        char ch = fileData.at(i);
+
+        if ((ch == '\n' || ch == '\0') && !buffer.isEmpty())
+        {
+            rows.push_back(QByteArray(buffer));
+            buffer.clear();
+        }
+        else
+            buffer.append(ch);
+    }
+
+    if (rows.isEmpty())
+    {
+        cb(false, tr("Failed to extract rows from CSV file"), 0);
+        return;
+    }
+
+    for(auto &row : rows)
+    {
+        QList<QByteArray> cols = row.split(',');
+
+        // colums: website, username, password, description(optional)
+        if (cols.size() < 3 || cols.size() > 4)
+        {
+            cb(false, tr("Wrong columns count in *.csv file"), rows.size());
+            return;
+        }
+
+        // parse fields here
+    }
+
+    cb(true, QString(), rows.size());
+}
+
 QList<QVariantMap> MPDevice::getFilesCache()
 {
     return filesCache.load();

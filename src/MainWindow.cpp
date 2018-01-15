@@ -1138,7 +1138,14 @@ void MainWindow::on_pushButtonChooseCSV_clicked()
 
 void MainWindow::on_pushButtonImportCSV_clicked()
 {
-    ui->progressBar_importCSV->show();
+    QFile csvFile(ui->lineEdit_importCSVFilePath->text());
+    if(csvFile.open(QFile::ReadOnly))
+    {
+        ui->progressBar_importCSV->show();
+
+        connect(wsClient, &WSClient::csvImported, this, &MainWindow::importCSVFinished);
+        wsClient->importCSVFile(csvFile.readAll());
+    }
 }
 
 void MainWindow::integrityProgress(int total, int current, QString message)
@@ -1171,9 +1178,12 @@ void MainWindow::integrityFinished(bool success)
     ui->widgetHeader->setEnabled(true);
 }
 
-void MainWindow::importCSVFinished(bool success)
+void MainWindow::importCSVFinished(bool success, QString message, int rows)
 {
     ui->progressBar_importCSV->hide();
+    disconnect(wsClient, &WSClient::csvImported, this, &MainWindow::importCSVFinished);
+
+    qDebug() << success << message << rows;
 
     if (!success)
         QMessageBox::warning(this, "Moolticute", tr("Failed to import CSV file"));

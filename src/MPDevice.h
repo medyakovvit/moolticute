@@ -201,6 +201,15 @@ public:
                         std::function<void(bool success, QString errstr)> cb,
                         MPDeviceProgressCb cbProgress);
 
+    /*!
+     * \brief importCSV
+     * \param fileData a content of a *.csv file converted to Base64
+     * \param cb a callback functuion is called after importing is finished or interrupted with an error
+     *
+     * Imports credentials from *.csv file and merges with credentials on the device
+     */
+    void importCSV(const QByteArray &fileData, std::function<void(bool success, QString errstr, int row)> cb);
+
     //After successfull mem mgmt mode, clients can query data
     QList<MPNode *> &getLoginNodes() { return loginNodes; }
     QList<MPNode *> &getDataNodes() { return dataNodes; }
